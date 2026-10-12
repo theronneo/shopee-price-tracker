@@ -17,7 +17,8 @@ PAGE_SIZE = 8
 HELP = (
     "Send a Shopee Singapore product link to start tracking. Choose a variant when prompted.\n"
     "/list — watches and last check\n/untrack <id> — stop a watch\n/help — this message\n"
-    "Checks run while this app and your computer are awake. Alerts compare consecutive valid "
+    "Checks run daily at 12:00 noon Singapore time while this app and your computer are awake. "
+    "Missed checks run once when the app resumes. Alerts compare consecutive valid "
     "prices, excluding vouchers, coins and shipping."
 )
 
@@ -29,13 +30,12 @@ class Bot:
         provider: PriceProvider,
         messenger: Messenger,
         owner: int,
-        interval: int,
         *,
         clock: Callable[[], float] = time.time,
         http: httpx.AsyncClient | None = None,
     ):
         self.store, self.provider, self.messenger = store, provider, messenger
-        self.owner, self.interval, self.clock, self.http = owner, interval, clock, http
+        self.owner, self.clock, self.http = owner, clock, http
 
     async def handle(self, update: dict[str, Any]) -> None:
         update_id = update["update_id"]
@@ -116,7 +116,7 @@ class Bot:
 
     async def _track(self, product: Product, variant: Variant) -> None:
         existing = self.store.find_watch(product.ref, variant.id)
-        watch = self.store.add_watch(product, variant, int(self.clock()), self.interval)
+        watch = self.store.add_watch(product, variant, int(self.clock()))
         price = (
             money(watch.last_price)
             if watch.last_price is not None
@@ -124,7 +124,7 @@ class Bot:
         )
         await self.messenger.send(
             f"{'Already tracking' if existing else 'Tracking'} #{watch.id}\n{watch.name}\n"
-            f"{watch.variant_name[:300]}\n{price}\nChecking every {self.interval / 60:g} minutes while running.\n{watch.ref.url}",
+            f"{watch.variant_name[:300]}\n{price}\nChecking daily at 12:00 noon Singapore time while running.\n{watch.ref.url}",
             [[{"text": "Untrack", "callback_data": f"u:{watch.id}"}]],
         )
 

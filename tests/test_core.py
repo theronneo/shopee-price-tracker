@@ -113,13 +113,10 @@ class ConfigTests(unittest.TestCase):
         env = {"TELEGRAM_BOT_TOKEN": "123:secret", "TELEGRAM_USER_ID": "42"}
         config = load_config(env)
         self.assertEqual(config.owner, 42)
-        self.assertEqual(config.interval, 1800)
         self.assertFalse(config.headless)
         for bad in [
             {"TELEGRAM_USER_ID": "0"},
             {"TELEGRAM_USER_ID": "1.5"},
-            {"CHECK_INTERVAL_MINUTES": "nan"},
-            {"CHECK_INTERVAL_MINUTES": "0"},
             {"BROWSER_HEADLESS": "yes"},
             {"TELEGRAM_BOT_TOKEN": ""},
         ]:

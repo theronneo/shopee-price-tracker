@@ -70,7 +70,10 @@ also use `python -m shopee_tracker` in place of `shopee-tracker`.
 Singapore product URLs and redirects from `s.shopee.sg` and `shope.ee` are
 supported. For app-only share links, copy the full product URL from your browser.
 
-Prices are checked every 30 minutes while the app and computer are awake.
+Prices are checked daily at **12:00 noon Singapore time (Asia/Singapore)** while
+the app and computer are awake. Items are processed sequentially starting at noon.
+Adding a watch reads its initial price immediately; later checks follow the noon
+schedule. Existing watches switch automatically when you start this version.
 Each successful reading is compared with the preceding valid reading, including
 increases. `S$100 → S$90 → S$95 → S$92` sends alerts at S$90 and S$92. The first
 reading establishes a baseline. Unavailable options wait for a valid price.
@@ -86,12 +89,13 @@ consume price observations through the existing provider boundary.
 | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | BotFather token | Required |
 | `TELEGRAM_USER_ID` | Only permitted user | Required |
-| `CHECK_INTERVAL_MINUTES` | Interval, 1–1440 minutes | `30` |
 | `DATA_DIR` | Database and browser profile | `./data` |
 | `BROWSER_HEADLESS` | Hide browser during checks | `false` |
 
 Environment variables override `.env`. Run commands from the repository root,
 or supply `DATA_DIR` and environment variables explicitly.
+The daily noon schedule is fixed; the old `CHECK_INTERVAL_MINUTES` setting is
+ignored and can be removed from an existing `.env`.
 
 Stop the bot before browser setup or diagnostics; they share one profile.
 `data/app.lock` prevents concurrent processes. After a crash, confirm all tracker
@@ -108,7 +112,9 @@ shutdown removes it. Automatic stale-lock deletion is deliberately avoided.
 
 Failures preserve the last valid price. Access incidents notify once per affected
 watch until a successful reading resets the incident. After downtime, overdue
-watches are checked once; price changes between checks cannot be recovered.
+watches are checked once when the app resumes, then scheduled for the next noon.
+Price changes between checks cannot be recovered. Failed price reads also wait
+until the next noon; queued Telegram alerts retain their separate retry timing.
 
 SQLite transactions save observations and their pending alerts together. Delivery
 failures are retried with a shared cooldown that honors Telegram's `retry_after`.

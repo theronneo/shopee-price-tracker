@@ -96,10 +96,10 @@ async def run(config: Config) -> None:
                     if stop.is_set():
                         return
                     provider = ShopeeProvider(browser)
-                    bot = Bot(store, provider, telegram, config.owner, config.interval, http=http)
-                    tracker = Tracker(store, provider, telegram, config.interval)
+                    bot = Bot(store, provider, telegram, config.owner, http=http)
+                    tracker = Tracker(store, provider, telegram)
                     print(
-                        f"Tracker running. Checking every {config.interval / 60:g} minutes. Send your bot /start. Ctrl+C stops it."
+                        "Tracker running. Checking daily at 12:00 noon Singapore time. Send your bot /start. Ctrl+C stops it."
                     )
                     results = await asyncio.gather(
                         _guard(_poll(bot, telegram, store, stop), stop),

@@ -3,6 +3,7 @@ from dataclasses import replace
 
 from shopee_tracker.bot import Bot
 from shopee_tracker.domain import PriceError, ProductRef
+from shopee_tracker.schedule import next_noon
 from shopee_tracker.store import Store
 from shopee_tracker.telegram import TelegramError
 from shopee_tracker.tracker import Tracker
@@ -34,7 +35,7 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.store.close)
         self.sender = CaptureMessenger()
         self.provider = StaticProvider()
-        self.bot = Bot(self.store, self.provider, self.sender, 42, 1800, clock=lambda: 100)
+        self.bot = Bot(self.store, self.provider, self.sender, 42, clock=lambda: 100)
 
     async def test_unauthorized_and_group_messages_are_ignored(self):
         await self.bot.handle(message("/list", 1, 99))
@@ -81,7 +82,7 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.handle(callback(next_button))
         self.assertIn("Option 8", self.sender.messages[-1][1][0][0]["text"])
         for i in range(10):
-            self.store.add_watch(PRODUCT, replace(VARIANT, id=str(i)), 1, 30)
+            self.store.add_watch(PRODUCT, replace(VARIANT, id=str(i)), 1)
         await self.bot.handle(message("/list", 3))
         await self.bot.handle(callback("l:1", 4))
         self.assertIn("#9 ", self.sender.messages[-1][0])
@@ -94,7 +95,7 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
             async def send(self, text, keyboard=None):
                 raise TelegramError(0)
 
-        bot = Bot(self.store, self.provider, Offline(), 42, 1800, clock=lambda: 100)
+        bot = Bot(self.store, self.provider, Offline(), 42, clock=lambda: 100)
         with self.assertRaises(TelegramError):
             await bot.handle(message(PRODUCT.ref.url))
         self.assertEqual(self.store.offset(), 0)
@@ -108,8 +109,8 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
         self.store = Store(":memory:")
         self.addCleanup(self.store.close)
         self.sender = CaptureMessenger()
-        self.now = 100
-        self.watch = self.store.add_watch(PRODUCT, VARIANT, 1, 30)
+        self.now = next_noon(1)
+        self.watch = self.store.add_watch(PRODUCT, VARIANT, 1)
 
     async def test_drop_alert_and_retry(self):
         provider = StaticProvider(replace(PRODUCT, variants=(replace(VARIANT, price_cents=9000),)))
@@ -123,11 +124,11 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
                 await super().send(text, keyboard)
 
         sender = Flaky()
-        await Tracker(self.store, provider, sender, 30, clock=lambda: self.now).tick()
+        await Tracker(self.store, provider, sender, clock=lambda: self.now).tick()
         self.assertEqual(self.store.get_watch(self.watch.id).last_price, 9000)
         sender.offline = False
-        self.now = 161
-        await Tracker(self.store, provider, sender, 30, clock=lambda: self.now).tick()
+        self.now += 61
+        await Tracker(self.store, provider, sender, clock=lambda: self.now).tick()
         self.assertEqual(len(sender.messages), 1)
         text = sender.messages[0][0]
         for part in ["S$100.00", "S$90.00", "S$10.00", PRODUCT.ref.url]:
@@ -141,7 +142,7 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
                 store.untrack(1)
                 return replace(PRODUCT, variants=(replace(VARIANT, price_cents=100),))
 
-        await Tracker(self.store, RemovingProvider(), self.sender, 30, clock=lambda: 100).tick()
+        await Tracker(self.store, RemovingProvider(), self.sender, clock=lambda: self.now).tick()
         self.assertEqual(self.sender.messages, [])
         self.assertEqual(self.store.list_watches(), [])
 
@@ -150,9 +151,9 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
             async def product(self, ref):
                 raise PriceError("access", "Login required")
 
-        tracker = Tracker(self.store, BlockedProvider(), self.sender, 30, clock=lambda: self.now)
+        tracker = Tracker(self.store, BlockedProvider(), self.sender, clock=lambda: self.now)
         await tracker.tick()
-        self.now = 200
+        self.now += 86400
         await tracker.tick()
         self.assertEqual(len(self.sender.messages), 1)
         self.assertEqual(self.store.get_watch(1).last_price, 10000)
@@ -162,10 +163,9 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
             replace(PRODUCT, ref=ProductRef("1", "5", "https://shopee.sg/product/1/5")),
             VARIANT,
             1,
-            30,
         )
-        self.store.observe(1, 9000, 2, 30)
-        self.store.observe(second.id, 9000, 2, 30)
+        self.store.observe(1, 9000, 2)
+        self.store.observe(second.id, 9000, 2)
 
         class Limited(CaptureMessenger):
             calls = 0
@@ -176,9 +176,7 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
 
         sender = Limited()
         for now in [100, 161]:
-            await Tracker(
-                self.store, StaticProvider(), sender, 30, clock=lambda now=now: now
-            ).tick()
+            await Tracker(self.store, StaticProvider(), sender, clock=lambda now=now: now).tick()
         self.assertEqual(sender.calls, 1)
-        await Tracker(self.store, StaticProvider(), sender, 30, clock=lambda: 220).tick()
+        await Tracker(self.store, StaticProvider(), sender, clock=lambda: 220).tick()
         self.assertEqual(sender.calls, 2)

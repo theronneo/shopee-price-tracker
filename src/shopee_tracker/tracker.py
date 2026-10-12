@@ -41,11 +41,10 @@ class Tracker:
         store: Store,
         provider: PriceProvider,
         messenger: Messenger,
-        interval: int,
         clock: Callable[[], float] = time.time,
     ):
         self.store, self.provider, self.messenger = store, provider, messenger
-        self.interval, self.clock = interval, clock
+        self.clock = clock
         self._busy = False
 
     async def tick(self, stop: asyncio.Event | None = None) -> None:
@@ -65,14 +64,12 @@ class Tracker:
                     if not variant or not variant.available or variant.price_cents is None:
                         raise PriceError("unavailable", "Selected variant unavailable.")
                 except PriceError as error:
-                    self.store.fail_watch(watch.id, error.reason, int(self.clock()), self.interval)
+                    self.store.fail_watch(watch.id, error.reason, int(self.clock()))
                 except (OSError, httpx.HTTPError):
-                    self.store.fail_watch(watch.id, "network", int(self.clock()), self.interval)
+                    self.store.fail_watch(watch.id, "network", int(self.clock()))
                 else:
                     # Storage failures propagate: they are not failed source reads.
-                    self.store.observe(
-                        watch.id, variant.price_cents, int(self.clock()), self.interval
-                    )
+                    self.store.observe(watch.id, variant.price_cents, int(self.clock()))
                 await self._deliver(stop)
         finally:
             self._busy = False

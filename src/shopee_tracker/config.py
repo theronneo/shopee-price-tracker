@@ -1,6 +1,5 @@
 """Validate configuration before opening the browser or database."""
 
-import math
 import os
 import re
 from collections.abc import Mapping
@@ -18,7 +17,6 @@ class BrowserConfig:
 class Config(BrowserConfig):
     token: str
     owner: int
-    interval: int
 
 
 def browser_config(env: Mapping[str, str] | None = None) -> BrowserConfig:
@@ -45,16 +43,4 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         raise ValueError(
             "Set TELEGRAM_USER_ID to your positive numeric Telegram user ID."
         ) from None
-    try:
-        minutes = float(values.get("CHECK_INTERVAL_MINUTES", "30"))
-        if (
-            not math.isfinite(minutes)
-            or not 1 <= minutes <= 1440
-            or not (minutes * 60).is_integer()
-        ):
-            raise ValueError
-    except ValueError:
-        raise ValueError(
-            "CHECK_INTERVAL_MINUTES must be 1–1440 minutes, in whole seconds."
-        ) from None
-    return Config(browser.data_dir, browser.headless, token, owner, int(minutes * 60))
+    return Config(browser.data_dir, browser.headless, token, owner)

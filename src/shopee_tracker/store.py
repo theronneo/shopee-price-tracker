@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from .domain import Product, ProductRef, Reason, Variant
+from .schedule import next_noon
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,19 @@ class Store:
             CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             PRAGMA user_version=1;
         """)
+        self._migrate_daily_schedule()
+
+    def _migrate_daily_schedule(self) -> None:
+        """Move existing interval watches to noon once, preserving overdue checks."""
+        with self._transaction():
+            if self._get_number("dailyNoonSchedule"):
+                return
+            rows = self.db.execute("SELECT id,lastChecked FROM watches WHERE active=1").fetchall()
+            self.db.executemany(
+                "UPDATE watches SET nextCheck=? WHERE id=?",
+                [(next_noon(row["lastChecked"]), row["id"]) for row in rows],
+            )
+            self._set_number("dailyNoonSchedule", 1)
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -141,7 +155,7 @@ class Store:
             )
         ]
 
-    def add_watch(self, product: Product, variant: Variant, now: int, interval: int) -> Watch:
+    def add_watch(self, product: Product, variant: Variant, now: int) -> Watch:
         with self._transaction():
             existing = self.find_watch(product.ref, variant.id)
             if existing:
@@ -162,7 +176,7 @@ class Store:
                     variant.name,
                     price,
                     now,
-                    now + interval,
+                    next_noon(now),
                     "ok" if price else "unavailable",
                 ),
             )
@@ -182,7 +196,7 @@ class Store:
         if type(price) is not int or not 0 < price < 2**63:
             raise ValueError("Invalid price in cents.")
 
-    def observe(self, watch_id: int, price: int, now: int, interval: int) -> None:
+    def observe(self, watch_id: int, price: int, now: int) -> None:
         self._validate_price(price)
         with self._transaction():
             watch = self.get_watch(watch_id)
@@ -201,14 +215,14 @@ class Store:
                 )
             self.db.execute(
                 "UPDATE watches SET lastPrice=?,lastChecked=?,nextCheck=?,status='ok',accessIncident=0 WHERE id=?",
-                (price, now, now + interval, watch_id),
+                (price, now, next_noon(now), watch_id),
             )
             self.db.execute(
                 "DELETE FROM notifications WHERE watchId=? AND kind='access' AND sent=0",
                 (watch_id,),
             )
 
-    def fail_watch(self, watch_id: int, reason: Reason, now: int, interval: int) -> None:
+    def fail_watch(self, watch_id: int, reason: Reason, now: int) -> None:
         with self._transaction():
             watch = self.get_watch(watch_id)
             if not watch or now <= watch.last_checked:
@@ -223,7 +237,7 @@ class Store:
                 (
                     reason,
                     now,
-                    now + interval,
+                    next_noon(now),
                     int(reason == "access" or watch.access_incident),
                     watch_id,
                 ),
