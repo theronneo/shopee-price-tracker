@@ -1,0 +1,16 @@
+{
+  "error": 0,
+  "data": {
+    "item": {
+      "shopid": 123,
+      "itemid": 456,
+      "name": "Example headphones",
+      "currency": "SGD",
+      "price": 1000000,
+      "models": [
+        { "modelid": 11, "name": "Black", "price": 1299000, "stock": 4 },
+        { "modelid": 12, "name": "White", "price": 1499000, "stock": 0 }
+      ]
+    }
+  }
+}
